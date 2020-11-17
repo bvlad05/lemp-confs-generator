@@ -9,6 +9,9 @@
               <div class="mt-3">
                 <input class="form-control" placeholder="Username" aria-label="Username" v-model="system.username">
               </div>
+              <div class="mt-3">
+                <input class="form-control" placeholder="Email" aria-label="Email" v-model="system.email">
+              </div>
               <h5 class="card-title mt-5">Website details</h5>
               <div class="mt-3">
                 <select class="form-select" aria-label="CMS" v-model="site.cms">
@@ -47,10 +50,10 @@
 usermod -a -G www-data {{ system.username}}
 usermod -a -G sudo {{ system.username}}
 passwd {{ system.username}}
+su {{ system.username }}
 </code></pre>
             <h4>PHP-Fpm configuration</h4>
             <pre class="code"><code>cd /etc/php/{{ site.php_v }}/fpm/pool.d/
-sudo rm www.conf
 sudo nano {{ site.name }}.conf
 
 <span class="comment"># And add next lines of code</span>
@@ -81,42 +84,23 @@ pm.max_spare_servers = 4
 </code></pre>
             <h4>Nginx configuration</h4>
 <pre class="code"><code>cd /etc/nginx/sites-available
-sudo nano 00-default.conf
-<span class="comment"># And add next lines of code</span>
-server {
-  listen [::]:80;
-  listen      80;
-  server_name "";
-  return      444;
-}
-
-<span class="comment"># Next</span>
-cd /etc/nginx/sites-available
 sudo nano 01-{{ site.domain }}.conf
 <span class="comment"># And add next lines of code</span>
 <component :is="site.cms" :system="system" :site="site" :db="db"></component>
 
 <span class="comment"># Create symbolic link</span>
 cd ../sites-enabled
-sudo ln -s 00-default.conf
-sudo ln -s 01-{{ site.domain }}.conf
+sudo ln -s ../sites-available/01-{{ site.domain }}.conf
 </code></pre>
-            <h4>Nginx MySQL</h4>
-<pre class="code"><code>sudo -s
-mysql -u root
-> USE mysql;
-> UPDATE user SET plugin = 'mysql_native_password' WHERE User = 'root';
-> ALTER USER 'root'@'localhost' IDENTIFIED BY '1234567890';
-> FLUSH PRIVILEGES;
-> EXIT;
-# Create user and table for website
+            <h4>Create database + user</h4>
+<pre class="code"><code>
+mysql -u root -p
 CREATE DATABASE IF NOT EXISTS {{ db.name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 CREATE USER '{{ db.username }}'@'localhost' IDENTIFIED BY '{{ db.password }}';
 GRANT USAGE ON *.* TO '{{ db.username }}'@'localhost' IDENTIFIED BY '{{ db.password }}' REQUIRE NONE WITH MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0;
 GRANT ALL PRIVILEGES ON `{{ db.name }}`.* TO '{{ db.username }}'@'localhost' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 EXIT;
-su {{ system.username }}
 </code></pre>
             <h4>Finish</h4>
 <pre class="code"><code>sudo -u {{ system.username }} mkdir /home/{{ system.username }}/tmp
@@ -125,10 +109,21 @@ sudo -u {{ system.username }} mkdir /home/{{ system.username }}/{{ site.domain }
 sudo -u {{ system.username }} mkdir /home/{{ system.username }}/{{ site.domain }}/www
 sudo -u {{ system.username }} mkdir /home/{{ system.username }}/.ssh
 sudo -u {{ system.username }} chmod 755 /home/{{ system.username }}/.ssh
-sudo -u {{ system.username }} ssh-keygen
+sudo -u {{ system.username }} ssh-keygen -t rsa -C "{{ system.email }}"
+</code></pre>
+            <h4>Add site to hosts</h4>
+<pre class="code"><code>sudo nano /etc/hosts
+<span class="comment"># Add next line</span>
+127.0.0.1 {{ site.domain }}
+
+# Restart services
+sudo nginx -t
 sudo service php{{ site.php_v }}-fpm restart
 sudo service nginx restart
 sudo service mysql restart
+
+# SSL
+sudo certbot --nginx -d {{ site.domain }} -d {{ site.domain }}
 </code></pre>
           </div>
         </div>
